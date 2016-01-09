@@ -4,22 +4,236 @@ output:
   html_document:
     keep_md: true
 ---
+This assignment is based on data from a personal activity monitoring device. Observations were collected from an anonymous individual during the months of October and November, 2012. Quantitative variable is the number of steps taken in 5 minute intervals each day.
 
+The goal of the assignment is to make preliminary analysis of data and to provide a script which makes this research transparent, structured and reproducible. Technically the script utilises capabilities of R and Markdown. Notice that all figures given in text blocks are calculated on the fly using built-in chunks with R variables.
+
+First, libraries were included to process data and draw plots. Also default background parameter has been changed to make all plots transparent.
+
+```{r echo = T, message = F}
+library('knitr')
+library('rmarkdown')
+library('data.table')
+library('dplyr')
+library('lattice')
+
+par(bg = 'transparent')
+```
 
 ## Loading and preprocessing the data
 
+Then data has been loaded from file **'activity.csv'**. We use data.table class to make calculations faster.
 
+```{r echo = T, message = F}
+# data originally were loaded in .zip archive
+if (!file.exists('activity.csv')) unzip('activity.zip')
+DT <- data.table(read.csv('activity.csv', header = T, as.is = T, sep = ','))
+# recode 'date' column into Date format
+DT$date <- as.Date(strftime(DT$date))
+# data.table preview
+DT
+```
+
+The dataset contains **`r nrow(DT)` rows** and **`r ncol(DT)` columns**:
+ 
+* *`r names(DT)[1]`* - number of steps taking in a 5-minute interval;
+* *`r names(DT)[2]`* - The date on which the measurement was taken in YYYY-MM-DD format;
+* *`r names(DT)[3]`* - identifier for the 5-minute interval in which measurement was taken.
+
+Observations cover period from `r min(DT$date)` to `r max(DT$date)`, which makes totally `r max(DT$date)-min(DT$date)` days.
 
 ## What is mean total number of steps taken per day?
+At first step of exploratory analysis we ignore missing values. Our goal is to take a glimpse on data. Histogram below shows distribution of total number of steps per day.
 
+```{r echo = T, message = F}
+# total number of steps each day
+DT.perday <- DT[, c('date', 'steps'), with = F][, lapply(.SD, sum), by = date]
+# data.table preview
+head(DT.perday)
 
+# Mean and median for variable 'steps'
+aver <- c(mean(DT.perday$steps, na.rm = T),  median(DT.perday$steps, na.rm = T))
+names(aver) <- c('mean', 'median')
+
+# Histogram of the total number of steps taken each day
+hist(DT.perday$steps, col = 'wheat', xlab = 'Total number of steps per day')
+abline(v = aver['mean'], lwd = 4, col = 'magenta')
+abline(v = aver['median'], lwd = 3, lty = 2, col = 'navyblue')
+legend('topright', legend = c('mean', 'median'), col = c('magenta', 'navyblue'), 
+       lwd = c(4, 3), lty = c(1, 2), bg = 'transparent', box.lwd = 0.5)
+```
+
+First conclusions based on the histogram:
+
+* Total number of steps per day seems to be normally distributed.
+* Median (**`r format(round(aver['median'], 1), digits = 1)`** steps per day) almost equals mean (**`r format(round(aver['mean'], 1), digits = 1)`** steps per day).
+
+```{r echo = T, message = F}
+# Remove temporary data tables
+rm(DT.perday)
+```
 
 ## What is the average daily activity pattern?
 
+In order to illustrate daily activity pattern we need to consider variable 'interval'. First 15 values of this variable are:
+
+`r DT$interval[1:15]`.
+
+```{r echo = F, include = F}
+# this function formats time intervals neatly and supports vectorisation
+numToTime <- function(x) {
+    ifelse(x < 60, 
+           res <- paste('00:', sprintf('%02d', x), sep = ''),
+           res <- paste(sprintf('%02d', floor(x / 100)), ':',
+                        sprintf('%02d', x %% 100), sep = ''))
+    return(res)
+}
+```
+
+Obviously, each value indicates an end of given 5 minute interval in 24 hour notation: `r numToTime(DT$interval[1:3])`,..., `r numToTime(DT$interval[13:15])`, and so on. Definition of user function **numToTime()**, which represents interval in this notation, is given below.
+
+```{r echo = T, message = F}
+# this function formats time interval neatly and supports vectorisation
+numToTime <- function(x) {
+    ifelse(x < 60, 
+           res <- paste('00:', sprintf('%02d', x), sep = ''),
+           res <- paste(sprintf('%02d', floor(x / 100)), ':',
+                        sprintf('%02d', x %% 100), sep = ''))
+    return(res)
+}
+```
+
+At this step of analysis new data table **DT.perint** was created. This dataset contains mean number of steps in 5 minute interval. Variable **'steps'** have been agregated omitting missing values.
+
+```{r, echo = T, message = F}
+# summarize (calc mean) steps by 5 min interval
+DT.perint <- DT[, c('steps', 'interval'), with  = F][, lapply(.SD, mean, na.rm = T), by = interval]
+# data.table preview
+DT.perint
+
+# plot of average steps taken per 5 min interval
+with(DT.perint, plot(interval, steps, type = 'l', main = 'Average number of steps by time interval', xaxt = 'n'))
+with(DT.perint, points(interval, steps, pch = '.', cex = 2.5))
+# find maximum
+max.point <- c(as.numeric(DT.perint[which(steps == max(steps)), 'interval', with=FALSE]), max(DT.perint$steps))
+names(max.point) <- c('x', 'y')
+# add maximum point to plot
+with(DT.perint, points(max.point['x'], max.point['y'], pch = 21, col = 'navyblue', bg = 'green', cex = 0.8))
+text(max.point['x'], max.point['y'], pos = 4, col = 'navyblue', 
+     labels = paste('(', numToTime(max.point['x']), '; ', round(max.point['y'], 1), ')', sep = ""))
+# format horizontal axis
+at.cust <- seq(300, 2100, by=300)
+axis(1, at=at.cust, labels = FALSE)
+text(at.cust - 10, par("usr")[3] - 6, labels=numToTime(at.cust), srt = 45, pos = 1, xpd = TRUE)
+```
+
+Time series plot above shows daily activity per 5 minute intervals averaged by 60 days. Maximum number of steps corresponds to `r numToTime(max.point['x'])`. One can also see lesser peacks around 12:00, 16:30 and 19:00 o'clock. About 6 hours of nighttime (23:30 - 5:30) are characterized by zero activity.
+
+```{r, echo = T, message = F}
+# Remove temporary data tables
+rm(DT.perint)
+```
 
 
 ## Imputing missing values
 
+At this point we are going to fill the gaps in data. Let's see how much missing values there are in each column of origin dataset.
 
+```{r, echo = T, message = F}
+# number of nas in variables
+DT[, sapply(.SD, function(x) sum(is.na(x)))]
+```
+
+So, there are `r sum(is.na(DT$steps))` observations of variable 'steps' we need to replace. Additional plot below shows that distribution of steps in the same time interval among 60 days is highly scewed. That's why median is appropriate estimator for average value of steps in given time interval. Side effect of using median in this particular case is the prevalence of zero medians at most of time intervals. Nevertheless, median is used to avoid positive bias in the number of steps. 
+
+```{r, echo = T, message = F}
+# distributions of 'steps' in the same 'interval'
+par(mfrow = c(2, 2), oma = c(0, 0, 1.5, 0))
+with(DT[interval == 835], hist(steps, main = '08:30 - 08:35', col = 'brown2'))
+with(DT[interval == 1200], hist(steps, main = '11:55 - 12:00', col = 'brown2'))
+with(DT[interval == 1625], hist(steps, main = '16:20 - 16:25', col = 'brown2'))
+with(DT[interval == 1900], hist(steps, main = '18:55 - 19:00', col = 'brown2'))
+mtext('Number of steps by time interval (60 days)', outer = TRUE)
+
+# set plot panel back to default
+par(mfrow = c(1, 1))
+```
+
+Missing values are to be replaced with medians in corresponding time interval, using key column available in data.table objects. Data with filled gaps is saved in table **DT.filled**. Table **DT.med.perint** contains medians calculated for each 5 minute interval. **'Interval'** is a key variable both in **DT.filled** and **DT.med.perint**.
+
+```{r, echo = T, message = F}
+# copy data to new table
+DT.filled <- copy(DT)
+# data.table preview
+head(DT.filled[interval == 900])
+
+# calculate medians
+DT.med.perint <- DT[, c('steps', 'interval'), with  = F][, lapply(.SD, median, na.rm = T), by = interval]
+# data.table preview
+DT.med.perint[interval == 900]
+
+# column 'interval' is a key
+setkey(DT.filled, interval)
+setkey(DT.med.perint, interval)
+
+# NA = median by interval
+DT.filled[is.na(steps), 'steps'] <- DT.med.perint[, 'steps', with = F]
+# data.table preview
+head(DT.filled[interval == 900])
+
+# Total number of steps each day
+DT.perday <- DT.filled[, c('date', 'steps'), with = F][, lapply(.SD, sum), by = date]
+# data.table preview
+head(DT.perday)
+
+# Mean and median for variable 'steps'
+aver.fna <- c(mean(DT.perday$steps, na.rm = T), median(DT.perday$steps, na.rm = T))
+names(aver.fna) <- c('mean', 'median')
+
+# Histogram of the total number of steps taken each day
+hist(DT.perday$steps, col = 'wheat', xlab = 'Total number of steps per day')
+abline(v = aver.fna['mean'], lwd = 4, col = 'magenta')
+abline(v = aver.fna['median'], lwd = 3, lty = 2, col = 'navyblue')
+legend('topright', legend = c('mean', 'median'), col = c('magenta', 'navyblue'), 
+       lwd = c(4, 3), lty = c(1, 2), bg = 'transparent', box.lwd = 0.5)
+```
+
+Filling missing values slightly affected on mean and median:
+
+* Distribution of total number of steps per day looks less like normal (1st bar is higher than 2nd).
+* Median now equals to **`r format(round(aver.fna['median'], 1), digits = 1)`** steps per day (`r format(round(aver['median'] - aver.fna['median'], 1), digits = 1)` `r if(aver['median'] - aver.fna['median']>0) 'less' else 'more'` than original).
+* Mean = **`r format(round(aver.fna['mean'], 1), digits = 1)`** steps per day (`r format(round(aver['mean'] - aver.fna['mean'], 1), digits = 1)`  `r if(aver['mean'] - aver.fna['mean']>0) 'less' else 'more'` than original).
+* Mean and median now differ and belong to different intervals of histogram.
+
+```{r, echo = T, message = F}
+# Remove temporary data tables
+rm(DT.perday)
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Finally, we need to analyse how day of the week affects activity patterns. Specifically, we need to separate weekdays from weekends. Code below adds new factor variable **'dayClass'** to data table with filled missing values (**DT.filled**). Then table **DT.perint** is recalculated. Result is shown at the plot with two facets.
+
+```{r, echo = T, message = F}
+# create new factor variable
+DT.filled[, dayClass:=factor(ifelse(wday(date)==7 | wday(date)==1,
+                             'weekend', 'weekday'))]
+
+# average number of steps each interval by day class
+DT.perint <- DT.filled[, c('steps', 'interval', 'dayClass'), with=F][, lapply(.SD, mean), by = c('interval', 'dayClass')]
+
+# plot (lattice package)
+my.plot <- xyplot(steps ~ interval | dayClass, data = DT.perint, layout = c(1, 2), type = 'l',
+                  scales = list(x=list(at = at.cust, labels = numToTime(at.cust))))
+# add grid lines to plot
+update(my.plot, panel = function(...) {
+    panel.abline(v = at.cust, lty = "dotted", col = "black")
+    panel.xyplot(...)
+})
+```
+
+Judging by this plot:
+
+* Average number of steps on intervals from 09:00 to 18:00 is slightly higher and has higher variance at weekends. This distingtion can be explained by office hours.
+* On the contrary, intervals from 05:00 to 09:00 and from 18:00 to 21:00 show more activity. Moreover, as curve increases in morning hours and falls in evening hours, one can assume that way from home to work and back again may be the leading factor here.
+* Further investigation may be conducted using statistical tests on the identified intervals.
