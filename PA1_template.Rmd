@@ -51,11 +51,11 @@ DT.perday <- DT[, c('date', 'steps'), with = F][, lapply(.SD, sum), by = date]
 # data.table preview
 head(DT.perday)
 
-# Mean and median for variable 'steps'
+# mean and median for variable 'steps'
 aver <- c(mean(DT.perday$steps, na.rm = T),  median(DT.perday$steps, na.rm = T))
 names(aver) <- c('mean', 'median')
 
-# Histogram of the total number of steps taken each day
+# histogram of the total number of steps taken each day
 hist(DT.perday$steps, col = 'wheat', xlab = 'Total number of steps per day')
 abline(v = aver['mean'], lwd = 4, col = 'magenta')
 abline(v = aver['median'], lwd = 3, lty = 2, col = 'navyblue')
@@ -69,7 +69,7 @@ First conclusions based on the histogram:
 * Median (**`r format(round(aver['median'], 1), digits = 1)`** steps per day) almost equals mean (**`r format(round(aver['mean'], 1), digits = 1)`** steps per day).
 
 ```{r echo = T, message = F}
-# Remove temporary data tables
+# remove temporary data tables
 rm(DT.perday)
 ```
 
@@ -159,7 +159,7 @@ mtext('Number of steps by time interval (60 days)', outer = TRUE)
 par(mfrow = c(1, 1))
 ```
 
-Missing values are to be replaced with medians in corresponding time interval, using key column available in data.table objects. Data with filled gaps is saved in table **DT.filled**. Table **DT.med.perint** contains medians calculated for each 5 minute interval. **'Interval'** is a key variable both in **DT.filled** and **DT.med.perint**.
+Missing values are to be replaced with medians for corresponding time interval. Medians were calculated and saved in the **DT.filled** table in temporary column named **'medInt'**. This values were used to fill NAs in the **'steps'** column.
 
 ```{r, echo = T, message = F}
 # copy data to new table
@@ -168,29 +168,26 @@ DT.filled <- copy(DT)
 head(DT.filled[interval == 900])
 
 # calculate medians
-DT.med.perint <- DT[, c('steps', 'interval'), with  = F][, lapply(.SD, median, na.rm = T), by = interval]
-# data.table preview
-DT.med.perint[interval == 900]
-
-# column 'interval' is a key
-setkey(DT.filled, interval)
-setkey(DT.med.perint, interval)
-
-# NA = median by interval
-DT.filled[is.na(steps), 'steps'] <- DT.med.perint[, 'steps', with = F]
+DT.filled[, medInt := median(steps, na.rm = TRUE), interval]
 # data.table preview
 head(DT.filled[interval == 900])
 
-# Total number of steps each day
+# fill in all missing values
+DT.filled <- transform(DT.filled, 
+                       steps = ifelse(is.na(steps), medInt, steps))[, c('steps', 'date', 'interval'), with = F]
+# data.table preview
+head(DT.filled[interval == 900])
+
+# recalculation of total number of steps each day
 DT.perday <- DT.filled[, c('date', 'steps'), with = F][, lapply(.SD, sum), by = date]
 # data.table preview
 head(DT.perday)
 
-# Mean and median for variable 'steps'
+# mean and median for variable 'steps'
 aver.fna <- c(mean(DT.perday$steps, na.rm = T), median(DT.perday$steps, na.rm = T))
 names(aver.fna) <- c('mean', 'median')
 
-# Histogram of the total number of steps taken each day
+# histogram of the total number of steps taken each day
 hist(DT.perday$steps, col = 'wheat', xlab = 'Total number of steps per day')
 abline(v = aver.fna['mean'], lwd = 4, col = 'magenta')
 abline(v = aver.fna['median'], lwd = 3, lty = 2, col = 'navyblue')
@@ -198,21 +195,21 @@ legend('topright', legend = c('mean', 'median'), col = c('magenta', 'navyblue'),
        lwd = c(4, 3), lty = c(1, 2), bg = 'transparent', box.lwd = 0.5)
 ```
 
-Filling missing values slightly affected on mean and median:
+Filling missing values affect on mean, median and distribution of data. Specifically:
 
 * Distribution of total number of steps per day looks less like normal (1st bar is higher than 2nd).
 * Median now equals to **`r format(round(aver.fna['median'], 1), digits = 1)`** steps per day (`r format(round(aver['median'] - aver.fna['median'], 1), digits = 1)` `r if(aver['median'] - aver.fna['median']>0) 'less' else 'more'` than original).
 * Mean = **`r format(round(aver.fna['mean'], 1), digits = 1)`** steps per day (`r format(round(aver['mean'] - aver.fna['mean'], 1), digits = 1)`  `r if(aver['mean'] - aver.fna['mean']>0) 'less' else 'more'` than original).
-* Mean and median now differ and belong to different intervals of histogram.
+* Mean and median differ and belong to adjacent intervals of histogram.
 
 ```{r, echo = T, message = F}
-# Remove temporary data tables
-rm(DT.perday)
+# remove temporary data tables
+rm(DT.perday, DT)
 ```
 
 ## Are there differences in activity patterns between weekdays and weekends?
 
-Finally, we need to analyse how day of the week affects activity patterns. Specifically, we need to separate weekdays from weekends. Code below adds new factor variable **'dayClass'** to data table with filled missing values (**DT.filled**). Then table **DT.perint** is recalculated. Result is shown at the plot with two facets.
+Finally, we need to analyse how days of the week affect activity patterns. Specifically, we need to separate weekdays from weekends. Code below adds new factor variable **'dayClass'** to data table with filled missing values (**DT.filled**). Then table **DT.perint** is recalculated. Result is shown at the plot with two facets.
 
 ```{r, echo = T, message = F}
 # create new factor variable
@@ -235,5 +232,5 @@ update(my.plot, panel = function(...) {
 Judging by this plot:
 
 * Average number of steps on intervals from 09:00 to 18:00 is slightly higher and has higher variance at weekends. This distingtion can be explained by office hours.
-* On the contrary, intervals from 05:00 to 09:00 and from 18:00 to 21:00 show more activity. Moreover, as curve increases in morning hours and falls in evening hours, one can assume that way from home to work and back again may be the leading factor here.
+* On the contrary, intervals from 05:00 to 09:00 and from 18:00 to 21:00 show more activity at weekdays. Moreover, as curve increases in morning hours and falls in evening hours, one can assume that way from home to work and back again may be the leading factor here.
 * Further investigation may be conducted using statistical tests on the identified intervals.
